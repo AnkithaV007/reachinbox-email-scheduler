@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmailStatus {
+  scheduled // row exists, delayed job queued in Redis
+  queued    // picked up by a worker, not yet claimed
+  sending   // claimed by exactly one worker
+  sent
+  failed
+  cancelled
+}
+
+model User {
+  id        String     @id @default(uuid())
+  googleId  String?    @unique
+  email     String     @unique
+  name      String
+  password  String?
+  avatarUrl String?
+  createdAt DateTime   @default(now())
+  campaigns Campaign[]
+}
+
+/// One Ethereal (or real) SMTP identity. Rate limits are keyed per sender.
+model Sender {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  name      String
+  smtpHost  String
+  smtpPort  Int
+  smtpUser  String
+  smtpPass  String
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  campaigns Campaign[]
+  jobs      EmailJob[]
+}
+
+/// A single compose action: one subject/body fanned out over N recipients.
+model Campaign {
+  id           String     @id @default(uuid())
+  userId       String
+  senderId     String
+  subject      String
+  body         String     @db.Text
+  startAt      DateTime
+  delayMs      Int // requested gap between consecutive sends in this campaign
+  hourlyLimit  Int // per-sender cap this campaign is willing to run at
+  totalCount   Int
+  createdAt    DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id])
+  sender       Sender     @relation(fields: [senderId], references: [id])
+  jobs         EmailJob[]
+
+  @@index([userId, createdAt])
+}
+
+/// One row per recipient. This table is the source of truth; Redis is a cache of intent.
+model EmailJob {
+  id           String      @id @default(uuid())
+  campaignId   String
+  senderId     String
+  recipient    String
+  subject      String
+  body         String      @db.Text
+  seqIndex     Int // position within the campaign, drives ordering on requeue
+  status       EmailStatus @default(scheduled)
+  scheduledAt  DateTime // current intended send time, updated when rate-limit defers it
+  claimedAt    DateTime?
+  sentAt       DateTime?
+  attempts     Int         @default(0)
+  lastError    String?     @db.Text
+  messageId    String?
+  previewUrl   String? // Ethereal preview link, handy for the demo video
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  campaign     Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sender       Sender      @relation(fields: [senderId], references: [id])
+
+  @@index([status, scheduledAt])
+  @@index([campaignId, seqIndex])
+}

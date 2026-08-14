@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.next/
+
+.env
+.env.local
+.env.*
+!.env.example
+
+*.log
+.DS_Store
+
+# Local database / Redis runtime files
+appendonly.aof
+pg.zip
+pgdata/
+pgsql/
+redis/
+
+# OS/editor
+.vscode/
+.idea/
