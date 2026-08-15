@@ -8,6 +8,8 @@ const schema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.string().default("development"),
   WEB_ORIGIN: z.string().default("http://localhost:3000"),
+  ALLOWED_ORIGINS: z.string().default(""),
+  FRONTEND_URL: z.string().default(""),
 
   DATABASE_URL: z.string(),
   REDIS_URL: z.string().default("redis://localhost:6379"),
@@ -29,6 +31,30 @@ const schema = z.object({
 });
 
 export const env = schema.parse(process.env);
+
+export function getAllowedOrigins(): string[] {
+  const defaults = [
+    "http://localhost:3000",
+    "https://reachinbox-web-nawz.onrender.com",
+  ];
+
+  const envSources = [
+    env.ALLOWED_ORIGINS,
+    env.WEB_ORIGIN,
+    env.FRONTEND_URL,
+    process.env.ALLOWED_ORIGINS,
+    process.env.WEB_ORIGIN,
+    process.env.FRONTEND_URL,
+  ];
+
+  const parsed = envSources
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .flatMap((val) => val.split(","))
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter((origin) => origin.length > 0);
+
+  return Array.from(new Set([...defaults, ...parsed]));
+}
 
 /** Senders are declared as SENDER_0_*, SENDER_1_*, ... so adding one is an env change. */
 export type SenderConfig = {
